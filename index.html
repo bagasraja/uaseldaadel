@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PZEM-004T Monitor Imut</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            /* Palet Warna Pastel Modern */
+            --bg-gradient: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            --text-dark: #4a4a4a;
+            --text-light: #8a8a8a;
+            --card-bg: #ffffff;
+            
+            /* Warna Aksen untuk Setiap Sensor */
+            --color-voltage: #FFD166; /* Kuning Pastel */
+            --color-current: #4DCCBD; /* Biru Tosca Pastel */
+            --color-power: #FF6B6B;   /* Merah/Pink Pastel */
+            --color-energy: #6BCB77;  /* Hijau Pastel */
+            --color-freq: #A78BFA;    /* Ungu Pastel */
+            --color-pf: #4ECDC4;      /* Cyan Pastel */
+
+            /* Status Colors */
+            --status-ok: #6BCB77;
+            --status-bad: #FF6B6B;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-dark);
+            font-family: 'Nunito', sans-serif;
+            margin: 0;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-family: 'Baloo 2', cursive;
+            font-weight: 800;
+            font-size: 2.5rem;
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 1px;
+            /* Efek teks pelangi halus */
+            background: linear-gradient(to right, var(--color-power), var(--color-voltage), var(--color-current));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-bar {
+            font-family: 'Nunito', sans-serif;
+            font-weight: 700;
+            color: var(--text-light);
+            margin-bottom: 40px;
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.6);
+            padding: 8px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background-color: var(--status-bad);
+            border-radius: 50%;
+            box-shadow: 0 0 5px var(--status-bad);
+            transition: all 0.3s ease;
+        }
+
+        .connected {
+            background-color: var(--status-ok);
+            box-shadow: 0 0 8px var(--status-ok);
+        }
+
+        /* Grid Layout */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        /* Modern Cute Card Style */
+        .card {
+            background: var(--card-bg);
+            border-radius: 30px; /* Sangat bulat */
+            padding: 25px;
+            position: relative;
+            /* Bayangan lembut yang modern */
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            border: 3px solid transparent; /* Untuk efek hover */
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Dekorasi atas kartu berwarna */
+        .card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: #ddd; /* Default */
+        }
+
+        .card-title {
+            font-family: 'Nunito', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text-light);
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .card-title span.emoji {
+            font-size: 1.5rem;
+        }
+
+        /* Styling Nilai Angka */
+        .value {
+            font-family: 'Baloo 2', cursive; /* Font angka yang bulat dan tebal */
+            font-weight: 800;
+            font-size: 3.5rem;
+            color: var(--text-dark);
+            text-align: center;
+            line-height: 1.1;
+            margin: 10px 0;
+            transition: color 0.3s ease;
+        }
+        
+        /* Menghilangkan efek angka hantu 8888 */
+        .value-bg { display: none; }
+        .value-real { position: relative; z-index: 2; }
+
+        .unit {
+            font-family: 'Nunito', sans-serif;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--text-light);
+            text-align: center;
+            display: block;
+            background: rgba(0,0,0,0.04);
+            padding: 5px 10px;
+            border-radius: 15px;
+            width: fit-content;
+            margin: 0 auto;
+        }
+
+        /* --- Warna Spesifik Per Kartu --- */
+        
+        /* Voltage */
+        .card.voltage::after { background: var(--color-voltage); }
+        .card.voltage .value { color: var(--color-voltage); }
+        .card.voltage:hover { border-color: var(--color-voltage); }
+
+        /* Current */
+        .card.current::after { background: var(--color-current); }
+        .card.current .value { color: var(--color-current); }
+        .card.current:hover { border-color: var(--color-current); }
+        
+        /* Power */
+        .card.power::after { background: var(--color-power); }
+        .card.power .value { color: var(--color-power); }
+        .card.power:hover { border-color: var(--color-power); }
+        
+        /* Energy */
+        .card.energy::after { background: var(--color-energy); }
+        .card.energy .value { color: var(--color-energy); }
+        .card.energy:hover { border-color: var(--color-energy); }
+
+        /* Frequency */
+        .card.freq::after { background: var(--color-freq); }
+        .card.freq .value { color: var(--color-freq); }
+        .card.freq:hover { border-color: var(--color-freq); }
+
+        /* Power Factor */
+        .card.pf::after { background: var(--color-pf); }
+        .card.pf .value { color: var(--color-pf); }
+        .card.pf:hover { border-color: var(--color-pf); }
+
+        /* Footer */
+        footer {
+            margin-top: 50px;
+            font-size: 0.8rem;
+            color: var(--text-light);
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        footer span {
+            color: var(--color-power);
+        }
+
+        /* Responsif untuk HP */
+        @media (max-width: 600px) {
+             h1 { font-size: 2rem; }
+             .value { font-size: 3rem; }
+             .card { padding: 20px; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>⚡ PZEM Monitor ⚡</h1>
+    <div class="status-bar">
+        <span id="status-led" class="status-indicator"></span>
+        <span>STATUS: <span id="status-text">DISCONNECTED</span></span>
+    </div>
+
+    <div class="dashboard">
+        <div class="card voltage">
+            <div class="card-title">Voltage (AC) <span class="emoji">⚡</span></div>
+            <div class="value value-real" id="val-voltage">000.0</div>
+            <span class="unit">Volt (V)</span>
+        </div>
+
+        <div class="card current">
+            <div class="card-title">Current Load <span class="emoji">💧</span></div>
+            <div class="value value-real" id="val-current">0.000</div>
+            <span class="unit">Ampere (A)</span>
+        </div>
+
+        <div class="card power">
+            <div class="card-title">Active Power <span class="emoji">🔥</span></div>
+            <div class="value value-real" id="val-power">000.0</div>
+            <span class="unit">Watt (W)</span>
+        </div>
+
+        <div class="card energy">
+            <div class="card-title">Total Energy <span class="emoji">🌱</span></div>
+            <div class="value value-real" id="val-energy">0000</div>
+            <span class="unit">kWh</span>
+        </div>
+
+        <div class="card freq">
+            <div class="card-title">Frequency <span class="emoji">〰️</span></div>
+            <div class="value value-real" id="val-freq">00.0</div>
+            <span class="unit">Hertz (Hz)</span>
+        </div>
+
+        <div class="card pf">
+            <div class="card-title">Power Factor <span class="emoji">⚙️</span></div>
+            <div class="value value-real" id="val-pf">0.00</div>
+            <span class="unit">Cosφ</span>
+        </div>
+    </div>
+
+    <footer>
+        Made with <span>♥</span> for IoT Project v2.0
+    </footer>
+
+    <script>
+        // --- KONFIGURASI MQTT (TIDAK BERUBAH) ---
+        const mqtt_broker = "broker.emqx.io";
+        const mqtt_port = 8084; 
+        const mqtt_topic = "iot/pzem/data";
+        const client_id = "web_client_cute_" + Math.random().toString(16).substr(2, 8);
+        const client = new Paho.MQTT.Client(mqtt_broker, mqtt_port, client_id);
+
+        client.onConnectionLost = function (responseObject) {
+            console.log("Koneksi Hilang: " + responseObject.errorMessage);
+            document.getElementById("status-text").innerText = "DISCONNECTED";
+            document.getElementById("status-led").classList.remove("connected");
+            setTimeout(connectMQTT, 5000);
+        };
+
+        client.onMessageArrived = function (message) {
+            console.log("Data Masuk: " + message.payloadString);
+            try {
+                const data = JSON.parse(message.payloadString);
+                
+                // Update Display
+                document.getElementById("val-voltage").innerText = parseFloat(data.tegangan).toFixed(1);
+                document.getElementById("val-current").innerText = parseFloat(data.arus).toFixed(3);
+                document.getElementById("val-power").innerText    = parseFloat(data.daya).toFixed(1);
+                document.getElementById("val-energy").innerText  = parseFloat(data.energi).toFixed(3);
+                document.getElementById("val-freq").innerText     = parseFloat(data.frekuensi).toFixed(1);
+                document.getElementById("val-pf").innerText       = parseFloat(data.pf).toFixed(2);
+
+                // Efek visual saat data masuk (sedikit membesar)
+                const cards = document.querySelectorAll('.card .value');
+                cards.forEach(val => {
+                    val.style.transform = "scale(1.1)";
+                    setTimeout(() => {
+                        val.style.transform = "scale(1)";
+                    }, 200);
+                });
+
+            } catch (e) {
+                console.error("Error parsing JSON: ", e);
+            }
+        };
+
+        function connectMQTT() {
+            console.log("Menghubungkan ke MQTT...");
+            document.getElementById("status-text").innerText = "CONNECTING...";
+            
+            client.connect({
+                useSSL: true,
+                onSuccess: function () {
+                    console.log("Berhasil Terhubung ke Broker!");
+                    document.getElementById("status-text").innerText = "ONLINE (EMQX)";
+                    document.getElementById("status-led").classList.add("connected");
+                    client.subscribe(mqtt_topic);
+                },
+                onFailure: function (message) {
+                    console.log("Gagal Konek: " + message.errorMessage);
+                    document.getElementById("status-text").innerText = "ERROR";
+                    setTimeout(connectMQTT, 5000); 
+                }
+            });
+        }
+
+        window.onload = connectMQTT;
+    </script>
+</body>
+</html>
